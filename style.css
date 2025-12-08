@@ -1,0 +1,526 @@
+@charset "UTF-8";
+
+/* =========================================
+   ベース設定
+   ========================================= */
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #000;
+    /* サイト全体で明朝体を使用 */
+    font-family: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "HGS Mincho E", "MS PMincho", serif;
+}
+
+canvas {
+    display: block;
+}
+
+/* =========================================
+   サイトロゴ
+   ========================================= */
+#site-logo {
+    position: fixed; /* スクロールしても固定 */
+    top: 30px;       /* 上からの余白 */
+    left: 35px;      /* 左からの余白 */
+    
+    /* サイズ調整（高さに合わせて幅は自動調整） */
+    height: 75px;    /* ロゴに合わせて数値を調整してください */
+    width: auto;
+    
+    z-index: 50;     /* 3D空間より手前に表示 */
+}
+
+/* =========================================
+   ポップアップ（オーバーレイ全体）
+   ========================================= */
+#popup {
+    display: none; /* 初期状態は非表示 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 100;
+    
+    /* 背景を少し暗くする */
+    background: rgba(0, 0, 0, 0.4);
+    
+    /* フェードアニメーション用 */
+    opacity: 0;
+    transition: opacity 0.4s ease;
+
+    /* コンテンツを中央配置 */
+    justify-content: center;
+    align-items: center;
+}
+
+#popup.active {
+    opacity: 1;
+}
+
+/* =========================================
+   ポップアップ（黒いカード部分）
+   ========================================= */
+.popup-content {
+    position: relative;
+    width: 90%;
+    max-width: 900px;
+    max-height: 85vh;
+    
+    /* ▼▼▼ 変更：黒背景（少し透け感あり） ▼▼▼ */
+    background: rgba(30, 30, 30, 0.8);
+    color: #ffffff; /* ベース文字色を白に */
+    /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
+
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    
+    border-radius: 8px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); /* 影を少し濃く */
+    padding: 40px;
+    
+    display: flex;
+    gap: 60px;
+    align-items: flex-start;
+    overflow-y: auto;
+    
+    /* カードの輪郭が暗闇に埋もれないように薄い枠線を追加 */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+    .popup-content {
+        flex-direction: column;
+        padding: 30px 20px;
+    }
+}
+
+/* =========================================
+   画像エリア
+   ========================================= */
+.popup-image-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center; /* 上下中央揃えも追加しておくと綺麗です */
+    
+    /* ▼▼▼ 修正：背景色と余白を削除しました ▼▼▼ */
+    background: transparent; /* 背景を透明に */
+    padding: 0;              /* 余白をなしに */
+    border: none;            /* 枠線もなしに */
+    /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
+    
+    border-radius: 2px;
+}
+
+#popup-img {
+    width: 100%;
+    height: auto;
+    max-height: 60vh;
+    object-fit: contain;
+    display: block;
+}
+
+/* =========================================
+   テキストエリア
+   ========================================= */
+.popup-text {
+    flex: 1;
+    color: #e0e0e0; /* 少し柔らかい白 */
+}
+
+/* タイトル */
+#popup-artist {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #eeeeee;    /* 白に近いグレー */
+    font-weight: 400;
+}
+
+#popup-title {
+    margin: 5px 0 0 0;
+    font-size: 1.8rem;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.05em;
+    color: #ffffff; /* 真っ白 */
+}
+
+/* 情報（年代・地域など） */
+.popup-meta {
+    margin: 8px 0 0 0;
+    color: #fff;
+    font-size: 0.9rem;
+    letter-spacing: 0.05em;
+}
+
+/* 解説文 */
+#popup-desc {
+    font-size: 1rem;
+    line-height: 2;
+    text-align: justify;
+    margin: 0;
+    color: #cccccc; /* 読みやすいライトグレー */
+}
+
+/* =========================================
+   ポップアップ内の地図
+   ========================================= */
+.popup-map-container {
+    margin-top: 40px;
+    padding-top: 20px;
+    text-align: center;
+}
+
+.popup-map-label {
+    font-family: "Yu Gothic", "YuGothic", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    font-size: 0.8rem;       /* ゴシックだと大きく見えることがあるので少し調整 */
+    color: #fff;
+    margin: 0 0 15px 0;
+    letter-spacing: 0.1em;
+    font-weight: 500;        /* 游ゴシックは細く見えがちなので、少しだけ太さを足すと見やすいです */
+}
+
+#popup-map {
+    width: 70%;
+    height: auto;
+    border-radius: 0px;
+    opacity: 1;
+}
+
+/* =========================================
+   閉じるボタン
+   ========================================= */
+#close-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    
+    width: 40px;
+    height: 40px;
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+
+    font-size: 28px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    
+    /* ▼▼▼ 変更：白文字に変更 ▼▼▼ */
+    color: #ffffff;
+    /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
+    
+    transition: background 0.2s, color 0.2s;
+    font-family: Arial, sans-serif;
+    z-index: 10;
+    border-radius: 50%;
+}
+
+#close-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1); /* 背景は薄い白 */
+}
+
+/* =========================================
+   全体ビューに戻るボタン
+   ========================================= */
+#reset-view-btn {
+    position: fixed;
+    top: 30px;
+    right: 30px;
+    z-index: 50;
+    
+    background: rgba(0, 0, 0, 0.5); /* 背景を黒く */
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 30px;
+    padding: 8px 18px;
+    
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    
+    font-family: "Yu Mincho", "YuMincho", serif;
+}
+
+#reset-view-btn:hover {
+    background: rgba(255, 255, 255, 0.9);
+    color: #000;
+    border-color: #fff;
+    font-weight: bold;
+}
+
+/* =========================================
+   ローディング画面
+   ========================================= */
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999; /* 全ての上に表示 */
+    background-color: #000; /* 真っ黒 */
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    transition: opacity 1.5s ease-in-out, visibility 1.5s; /* ゆっくりフェードアウト */
+}
+
+/* 読み込み完了後に付与するクラス */
+#loading-screen.fade-out {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none; /* クリックを透過させる */
+}
+
+.loading-content {
+    text-align: center;
+    color: #fff;
+    /* ここはデフォルトの明朝体のままでOK */
+    font-family: "Yu Mincho", "YuMincho", serif;
+}
+
+#loading-text {
+    font-size: 1rem;
+    letter-spacing: 0.35em;
+    margin-bottom: 20px;
+    
+    /* ▼▼▼ 変更：ここだけFuturaにします ▼▼▼ */
+    font-family: "Futura", "Futura PT", "Century Gothic", sans-serif;
+    /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
+
+    /* ▼▼▼ 追加：ウェイトを300（細字）にします ▼▼▼ */
+    font-weight: 300;
+    /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
+    
+    text-transform: uppercase; /* 小文字でも大文字表示にしてカッコよく */
+}
+
+/* プログレスバーの枠 */
+#loading-bar-container {
+    width: 200px;
+    height: 2px;
+    background: #333;
+    margin: 0 auto;
+    position: relative;
+}
+
+/* 伸びていく白いバー */
+#loading-bar {
+    width: 0%; /* JSで伸ばします */
+    height: 100%;
+    background: #fff;
+    transition: width 0.2s;
+}
+
+/* =========================================
+   インストラクション・オーバーレイ
+   ========================================= */
+#instruction-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 8000; /* Loading(9999)より下、Popup(100)より上 */
+    background: rgba(0, 0, 0, 0.75); /* 少し透けた黒 */
+    backdrop-filter: blur(5px);
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    transition: opacity 0.8s ease, visibility 0.8s;
+}
+
+#instruction-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.instruction-content {
+    text-align: center;
+    color: #fff;
+    max-width: 800px;
+    width: 90%;
+}
+
+.instruction-logo {
+    width: 270px;        /* ロゴの大きさ（お好みで調整してください） */
+    height: auto;
+    margin-bottom: 30px; /* 下の説明文との余白 */
+}
+
+.instruction-desc {
+    font-family: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", serif;
+    font-size: 0.95rem;
+    line-height: 2.1;       /* ゆったりとした行間 */
+    letter-spacing: 0.08em;
+    color: #eeeeee;         /* 真っ白より少し目に優しい白 */
+    margin-bottom: 55px;    /* アイコンとの距離 */
+    
+    /* PCで見やすいように幅を制限 */
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.instruction-icons {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    margin-bottom: 60px;
+}
+
+.icon-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.icon-circle {
+    width: 75px;
+    height: 75px;
+    border: 1px solid rgba(255,255,255,0.5);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 15px;
+    background: rgba(255,255,255,0.05);
+}
+
+.icon-circle img {
+    width: 50%;       /* 円に対してのアイコンサイズ（お好みで調整: 40%〜60%くらい） */
+    height: auto;
+    display: block;
+}
+
+.icon-group p {
+    font-family: "Futura", "Futura PT", sans-serif;
+    font-size: 0.9rem;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.icon-group small {
+    font-family: "Yu Mincho", serif;
+    font-size: 0.8rem;
+    display: block;
+    margin-top: 4px;
+}
+
+/* STARTボタン */
+#start-btn {
+    background: transparent;
+    color: #fff;
+    border: 0.75px solid #fff;
+    padding: 12px 40px;
+    font-family: "Futura", "Futura PT", sans-serif;
+    letter-spacing: 0.1em;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#start-btn:hover {
+    background: #fff;
+    color: #000;
+    font-weight: bold;
+}
+
+/* スマホ対応 */
+@media (max-width: 768px) {
+    .instruction-icons {
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .instruction-logo {
+        width: 160px;    /* 少し小さく */
+        margin-bottom: 30px;
+    }
+
+    .instruction-desc {
+        font-size: 0.85rem;
+        line-height: 1.8;
+        margin-bottom: 40px;
+    }
+    .instruction-desc br {
+        display: none;
+    }
+}
+
+/* =========================================
+   左下の操作ガイド・注釈
+   ========================================= */
+#bottom-notice {
+    position: fixed;
+    bottom: 25px;
+    left: 25px;
+    z-index: 60; /* ロゴ(50)より上、ポップアップ(100)より下 */
+
+    /* デザイン調整 */
+    background: rgba(0, 0, 0, 0.6); /* 背景を半透明の黒に */
+    backdrop-filter: blur(4px);     /* すりガラス効果 */
+    -webkit-backdrop-filter: blur(4px);
+    
+    border: 1px solid rgba(255, 255, 255, 0.15); /* 薄い枠線 */
+    border-radius: 4px;
+    padding: 15px 20px;
+    
+    color: #fff;
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "YuGothic", "Meiryo", sans-serif;
+    font-size: 12px;
+    line-height: 1.6;
+    letter-spacing: 0.05em;
+    
+    pointer-events: none; /* マウス操作を透過させる（誤ってここをクリックしても裏の操作を邪魔しないようにする） */
+    user-select: none;    /* テキスト選択不可 */
+}
+
+/* 注釈（開発中〜）の部分 */
+.notice-warning {
+    margin: 0 0 10px 0;
+    color: #cccccc; /* 少しグレーにして控えめに */
+    font-size: 11px;
+}
+
+/* リスト部分 */
+.notice-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.notice-list li {
+    margin-bottom: 4px;
+}
+
+.notice-list li strong {
+    color: #ffffff;
+    font-weight: bold;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+/* スマホ表示時の調整（邪魔にならないように少し小さく、あるいは非表示にするなど） */
+@media (max-width: 768px) {
+    #bottom-notice {
+        bottom: 10px;
+        left: 10px;
+        padding: 12px;
+        font-size: 10px;
+        max-width: 200px; /* 幅を制限 */
+    }
+}

@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOHAKU DIVE</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+</head>
+<body>
+    <img id="site-logo" src="images/logo.svg" alt="Museum Logo">
+    <div id="loading-screen">
+        <div class="loading-content">
+            <p id="loading-text">Loading...</p>
+            <div id="loading-bar-container">
+                <div id="loading-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="instruction-overlay">
+        <div class="instruction-content">
+            <img src="images/logo.svg" alt="Tohaku Dive Logo" class="instruction-logo">
+
+            <p class="instruction-desc">
+                ようこそ、「トーハクダイブ」へ。<br>
+                東京国立博物館本館の「日本美術の流れ」をガイドいたします。<br>
+                アプリと展示を行き来しながら、<br>
+                時空を超えた作品のつながりを、ご自身の目で発見してみてください。<br>
+                さぁ、美の旅を始めましょう。
+            </p>
+
+            <div class="instruction-icons">
+                <div class="icon-group">
+                    <div class="icon-circle">
+                        <img src="images/icon-rotate.svg" alt="Rotate">
+                    </div>
+                    <p>Drag to Rotate<br><small>回転</small></p>
+                </div>
+                
+                <div class="icon-group">
+                    <div class="icon-circle">
+                        <img src="images/icon-zoom.svg" alt="Zoom">
+                    </div>
+                    <p>Scroll to Zoom<br><small>拡大・縮小</small></p>
+                </div>
+                
+                <div class="icon-group">
+                    <div class="icon-circle">
+                        <img src="images/icon-click.svg" alt="Click">
+                    </div>
+                    <p>Click to View<br><small>詳細を見る</small></p>
+                </div>
+            </div>
+            <button id="start-btn">はじめる</button>
+        </div>
+    </div>
+
+    <button id="reset-view-btn">全体ビューに戻る</button>
+
+    <div id="bottom-notice">
+        <p class="notice-warning">※開発中のため、動作が鈍い場合がございます。</p>
+        <ul class="notice-list">
+            <li>回転させたい場合は<strong>【ドラッグ】</strong></li>
+            <li>ズームイン・アウトしたい場合は<strong>【二本指スワイプ】</strong></li>
+            <li>作品の詳細を確認したい場合は<strong>【クリック】</strong></li>
+        </ul>
+    </div>
+
+    <div id="popup">
+        <div class="popup-content">
+            <button id="close-btn">×</button>
+            
+            <div class="popup-image-container">
+                <img id="popup-img" src="" alt="">
+            </div>
+            
+            <div class="popup-text">
+                <p id="popup-artist">アーティスト名</p>
+                <h2 id="popup-title">タイトル</h2>
+                <p class="popup-meta"><small id="popup-info">情報</small></p>
+                <div class="separator"></div>
+                <p id="popup-desc">解説文はここに入ります（データにdescriptionがあれば）</p>
+                
+                <div class="popup-map-container">
+                    <p class="popup-map-label">［展示エリア］</p>
+                    <img id="popup-map" src="" alt="Map">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "gsap": "https://unpkg.com/gsap@3.12.5/index.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+        import gsap from 'gsap';
+        import { artworksData } from './data.js';
+
+        const CONFIG = {
+            colors: {
+                bg: 0x000000,
+                labels: "white", 
+                gridLine: 0x666666, 
+                outlineColor: 0xffffff,
+                guideLine: 0x666666 
+            },
+            layout: {
+                yearScale: 0.15, baseYear: 1400, genreHeightBase: 2,
+                labelInterval: 100, startYear: 800, endYear: 1750
+            },
+            camera: {
+                fov: 60, pos: { x: 0, y: 15, z: 70 }, near: 0.1, far: 2000
+            },
+            controls: {
+                damping: 0.05, zoomSpeed: 5.0, minDist: 2, maxDist: 500,
+                maxPolarAngle: Math.PI
+            }
+        };
+
+        // ==========================================
+        // マッピング定義
+        // ==========================================
+        
+        // 1. ラベル・ガイドラインを表示する「主要エリア」（変更なし）
+        const MAPS = {
+            region: { 
+                "中国": -20, 
+                "京都": -10, 
+                "奈良": 0, 
+                "鎌倉": 10, 
+                "江戸": 20 
+            },
+            genre: { "絵画": 18, "書跡": 12, "工芸": 6, "彫刻": 0 }
+        };
+
+        // 2. ★追加：作品配置用の詳細座標マップ
+        // ここに「新潟」などの細かい地域と、その座標（X）を定義します
+        const PLOT_MAP = {
+            // まずは主要エリアをコピー（スプレッド構文）
+            ...MAPS.region,
+            "新潟": 5, 
+            "長野": 5,
+            "栃木": 5,
+            "静岡": 3,
+            "和歌山": -5,
+            "香川": -12,
+            "山口": -15
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+        };
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(CONFIG.colors.bg);
+        scene.fog = new THREE.Fog(CONFIG.colors.bg, 20, 180); 
+
+        const camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, window.innerWidth / window.innerHeight, CONFIG.camera.near, CONFIG.camera.far);
+        camera.position.set(CONFIG.camera.pos.x, CONFIG.camera.pos.y, CONFIG.camera.pos.z);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- Post Processing ---
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+        const outlinePass = new OutlinePass(new THREE.Vector2(window.innerWidth, window.innerHeight), scene, camera);
+        outlinePass.edgeStrength = 5.0; outlinePass.edgeGlow = 1.0; outlinePass.edgeThickness = 2.5;
+        outlinePass.visibleEdgeColor.set(CONFIG.colors.outlineColor); outlinePass.hiddenEdgeColor.set(0x000000);
+        composer.addPass(outlinePass);
+        const outputPass = new OutputPass();
+        composer.addPass(outputPass);
+
+        // --- Scene Objects ---
+        scene.add(new THREE.GridHelper(3000, 300, CONFIG.colors.gridLine, 0x222222));
+        const sharedGeometry = new THREE.BoxGeometry(7.5, 7.5, 0);
+
+        // --- Loading Manager ---
+        const loadingManager = new THREE.LoadingManager();
+        loadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+            const progress = itemsLoaded / itemsTotal;
+            document.getElementById('loading-bar').style.width = (progress * 100) + '%';
+        };
+        loadingManager.onLoad = function() {
+            setTimeout(() => { document.getElementById('loading-screen').classList.add('fade-out'); }, 500);
+        };
+        const textureLoader = new THREE.TextureLoader(loadingManager);
+
+        // ==========================================
+        // ローディング & スタート処理
+        // ==========================================
+        
+        // 1. ロード完了時（既存のコードを少し変更）
+        loadingManager.onLoad = function() {
+            setTimeout(() => { 
+                // ローディング画面だけ消す（後ろにあるインストラクションが見えるようになる）
+                document.getElementById('loading-screen').classList.add('fade-out'); 
+            }, 500);
+        };
+
+        // 2. STARTボタンを押した時（新規追加）
+        document.getElementById('start-btn').addEventListener('click', () => {
+            // インストラクションを消す
+            document.getElementById('instruction-overlay').classList.add('hidden');
+            
+            // 操作ロックを解除
+            controls.enabled = true;
+
+            // ▼▼▼ 追加：クリック判定のロックを解除 ▼▼▼
+            isAppActive = true;
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+            
+            // 演出：カメラを少し動かして「始まった感」を出す（オプション）
+            gsap.fromTo(camera.position, 
+                { y: CONFIG.camera.pos.y + 10 }, 
+                { y: CONFIG.camera.pos.y, duration: 2, ease: "power2.out" }
+            );
+        });
+
+        // ==========================================
+        // 作品配置（データ構造変更に対応）
+        // ==========================================
+        function createArtworks() {
+            artworksData.forEach((data) => {
+                
+                // ▼▼▼ 修正A：データのキー「image」を使用＆フォルダパスを追加 ▼▼▼
+                // もし画像が「images」フォルダにあるなら、以下のように書きます
+                const imagePath = "images/" + data.image; 
+                
+                const texture = textureLoader.load(imagePath);
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+                texture.colorSpace = THREE.SRGBColorSpace;
+                
+                const material = new THREE.MeshBasicMaterial({ map: texture });
+                const mesh = new THREE.Mesh(sharedGeometry, material);
+
+                // data['region-plot'] のようにブラケット記法を使います
+                const x = PLOT_MAP[data['region-plot']] || PLOT_MAP[data.country] || 0;
+                const y = (MAPS.genre[data.genre] || 0) + CONFIG.layout.genreHeightBase;
+                const z = (data['year-plot'] - CONFIG.layout.baseYear) * CONFIG.layout.yearScale;
+
+                mesh.position.set(x, y, z);
+                mesh.userData = data; 
+                mesh.name = "artwork";
+                scene.add(mesh);
+            });
+        }
+
+        // ==========================================
+        // ラベル生成（間隔の使い分け）
+        // ==========================================
+        function createLabels() {
+            const textureCache = {};
+            Object.keys(MAPS.region).forEach(name => { textureCache[name] = createTextTexture(name, CONFIG.colors.labels); });
+            Object.keys(MAPS.genre).forEach(name => { textureCache[name] = createTextTexture(name, CONFIG.colors.labels); });
+
+            // 100年刻みでループ（CONFIG.layout.labelInterval = 100）
+            for (let year = CONFIG.layout.startYear; year <= CONFIG.layout.endYear; year += CONFIG.layout.labelInterval) {
+                
+                const z = (year - CONFIG.layout.baseYear) * CONFIG.layout.yearScale;
+
+                // ▼▼▼ 追加：300年ごとの判定ロジック ▼▼▼
+                // 「開始年から数えて300年ごとに」表示する
+                const isMajorInterval = (year - CONFIG.layout.startYear) % 300 === 0;
+
+                if (isMajorInterval) {
+                    // --- 地域・ジャンル・枠線は 300年ごとに表示 ---
+                    Object.keys(MAPS.region).forEach(name => { 
+                        createSprite(textureCache[name], MAPS.region[name], 25, z, 0.5); 
+                    });
+                    
+                    Object.keys(MAPS.genre).forEach(name => { 
+                        createSprite(textureCache[name], -35, MAPS.genre[name] + 2, z, 0.5); 
+                        createSprite(textureCache[name], 35, MAPS.genre[name] + 2, z, 0.5);
+                    });
+                    
+                    // 枠線も300年ごとの方がスッキリします
+                    createGuideFrame(z);
+                }
+                // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+                // --- 年代は毎回（100年ごとに）表示 ---
+                createLabel(
+                    String(year), 
+                    30, 0.5, z, 
+                    0.6, 
+                    CONFIG.colors.labels, 
+                    '"Futura", "Futura PT", "Century Gothic", sans-serif',
+                    'normal'
+                );
+
+                createLabel(
+                    String(year), 
+                    -30, 0.5, z, 
+                    0.6, 
+                    CONFIG.colors.labels, 
+                    '"Futura", "Futura PT", "Century Gothic", sans-serif',
+                    'normal'
+                );
+
+                createYearLine(z);
+            }
+        }
+
+        function createYearLine(z) {
+            // 幅を広く設定（-1000〜1000）して、どこまでカメラを引いても線が見えるようにします
+            const points = [new THREE.Vector3(-1000, 0, z), new THREE.Vector3(1000, 0, z)];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            
+            // 白色のライン（透明度を入れて上品に）
+            const material = new THREE.LineBasicMaterial({ 
+                color: 0x666666,      // 白
+            });
+            
+            scene.add(new THREE.Line(geometry, material));
+        }
+        
+        function createTextTexture(text, color, fontFamily = null, fontWeight = 'Bold') {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 512; canvas.height = 256;
+            const fontName = fontFamily || '"Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "HGS Mincho E", "MS PMincho", serif';
+            ctx.font = fontWeight + ' 100px ' + fontName;
+            ctx.letterSpacing = '15px'; 
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+            return new THREE.CanvasTexture(canvas);
+        }
+        function createSprite(texture, x, y, z, size) {
+            const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.7 });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(10 * size, 5 * size, 1);
+            sprite.position.set(x, y, z);
+            scene.add(sprite);
+        }
+        function createLabel(text, x, y, z, size, color, fontFamily = null, fontWeight = 'Bold') {
+            const texture = createTextTexture(text, color, fontFamily, fontWeight);
+            createSprite(texture, x, y, z, size);
+        }
+        function createGuideFrame(z) { /* 変更なし */
+            const points = [new THREE.Vector3(-30, 0, z), new THREE.Vector3(30, 0, z), new THREE.Vector3(30, 28, z), new THREE.Vector3(-30, 28, z), new THREE.Vector3(-30, 0, z)];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ color: CONFIG.colors.gridLine, transparent: true, opacity: 0.3 });
+            scene.add(new THREE.Line(geometry, material));
+        }
+        function createGuidelines() { /* 変更なし */
+            const startZ = (CONFIG.layout.startYear - CONFIG.layout.baseYear) * CONFIG.layout.yearScale;
+            const endZ = (CONFIG.layout.endYear - CONFIG.layout.baseYear) * CONFIG.layout.yearScale;
+            const material = new THREE.LineBasicMaterial({ color: CONFIG.colors.guideLine, transparent: true, opacity: 0.3 });
+            Object.keys(MAPS.region).forEach(name => {
+                const points = [new THREE.Vector3(MAPS.region[name], 25, startZ), new THREE.Vector3(MAPS.region[name], 18, endZ)];
+                scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
+            });
+            Object.keys(MAPS.genre).forEach(name => {
+                const points = [new THREE.Vector3(-30, MAPS.genre[name] + 2, startZ), new THREE.Vector3(-30, MAPS.genre[name] + 2, endZ)];
+                scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
+            });
+        }
+
+        // ▼▼▼ 追加：アプリが開始されたかどうかのフラグ（最初は false） ▼▼▼
+        let isAppActive = false;
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        createArtworks();
+        createLabels();
+        createGuidelines();
+
+        // --- Interaction ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = CONFIG.controls.damping;
+        controls.minDistance = CONFIG.controls.minDist;
+        controls.maxDistance = CONFIG.controls.maxDist;
+        controls.maxPolarAngle = CONFIG.controls.maxPolarAngle;
+        // ▼▼▼ 追加：最初は操作できないようにロックしておく ▼▼▼
+        controls.enabled = false; 
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('resize', onResize);
+        
+        // タッチ＆クリック判定
+        const touchStart = new THREE.Vector2();
+        window.addEventListener('pointerdown', (e) => { touchStart.x = e.clientX; touchStart.y = e.clientY; });
+        window.addEventListener('pointerup', (e) => {
+            if (Math.abs(e.clientX - touchStart.x) < 5 && Math.abs(e.clientY - touchStart.y) < 5) onMouseClick(e);
+        });
+
+        function onPointerMove(event) {
+            // ▼▼▼ 追加：アプリ開始前なら即終了 ▼▼▼
+            if (!isAppActive) return;
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+            if (popup.classList.contains('active')) return;
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+            if (intersects.length > 0 && intersects[0].object.name === "artwork") {
+                outlinePass.selectedObjects = [intersects[0].object];
+                document.body.style.cursor = 'pointer';
+            } else {
+                outlinePass.selectedObjects = [];
+                document.body.style.cursor = 'default';
+            }
+        }
+        function resetHover() { outlinePass.selectedObjects = []; document.body.style.cursor = 'default'; }
+
+        function onMouseClick(event) {
+            // ▼▼▼ 追加：アプリ開始前なら即終了 ▼▼▼
+            if (!isAppActive) return;
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+            if (popup.classList.contains('active')) {
+                if (!event.target.closest('.popup-content')) closePopup();
+                return;
+            }
+            if (event.target.id === 'reset-view-btn') return;
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+            if (intersects.length > 0 && intersects[0].object.name === "artwork") {
+                resetHover();
+                focusOnArtwork(intersects[0].object);
+                openPopup(intersects[0].object.userData);
+            }
+        }
+
+        function focusOnArtwork(targetMesh) {
+            gsap.to(camera.position, { x: targetMesh.position.x, y: targetMesh.position.y, z: targetMesh.position.z + 8, duration: 1.5, ease: "power2.out" });
+            gsap.to(controls.target, { x: targetMesh.position.x, y: targetMesh.position.y, z: targetMesh.position.z, duration: 1.5, ease: "power2.out", onUpdate: () => controls.update() });
+        }
+        function resetCamera() {
+            gsap.to(controls.target, { x: 0, y: 0, z: 0, duration: 1.5, ease: "power2.out", onUpdate: () => controls.update() });
+            gsap.to(camera.position, { x: CONFIG.camera.pos.x, y: CONFIG.camera.pos.y, z: CONFIG.camera.pos.z, duration: 1.5, ease: "power2.out" });
+        }
+
+        // --- Popup Control ---
+        const popup = document.getElementById('popup');
+        const closeBtn = document.getElementById('close-btn');
+
+        // ==========================================
+        // ポップアップ表示（修正版）
+        // ==========================================
+        function openPopup(data) {
+            document.getElementById('popup-title').textContent = data.title;
+            document.getElementById('popup-artist').textContent = data.artist || '';
+            document.getElementById('popup-desc').textContent = data.description || ''; 
+            
+            // ▼▼▼ 修正箇所：空白データを除去して結合する処理 ▼▼▼
+            
+            // 1. 表示したい項目を配列に入れます
+            const metaItems = [data.year, data.place, data.genre];
+
+            // 2. filter(Boolean) で「空文字」「null」「undefined」を除外します
+            // 3. join(' ／ ') で、残った項目の間だけに「 ／ 」を入れて結合します
+            const metaText = metaItems.filter(Boolean).join(' ／ ');
+
+            document.getElementById('popup-info').textContent = metaText;
+
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+            // 画像パス
+            document.getElementById('popup-img').src = "images/" + data.image;
+            
+            // マップ画像
+            const mapImg = document.getElementById('popup-map');
+            if (data.map) {
+                mapImg.src = "images/" + data.map;
+                mapImg.style.display = 'inline-block'; 
+            } else {
+                mapImg.style.display = 'none'; 
+            }
+
+            popup.style.display = 'flex';
+            requestAnimationFrame(() => popup.classList.add('active'));
+        }
+
+        function closePopup() {
+            popup.classList.remove('active');
+            setTimeout(() => { popup.style.display = 'none'; }, 400);
+        }
+        closeBtn.addEventListener('click', closePopup);
+        document.getElementById('reset-view-btn').addEventListener('click', () => {
+            if (popup.classList.contains('active')) closePopup();
+            resetCamera();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            composer.render();
+        }
+        animate();
+        function onResize() {
+            const w = window.innerWidth, h = window.innerHeight;
+            camera.aspect = w / h; camera.updateProjectionMatrix();
+            renderer.setSize(w, h); composer.setSize(w, h);
+        }
+    </script>
+</body>
+</html>
